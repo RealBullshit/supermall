@@ -8,7 +8,6 @@ export function request(config) {
   })
 
   //2.axios的拦截器
-
   //2.1.请求拦截的作用
   //拦截请求
   instance.interceptors.request.use(config => {

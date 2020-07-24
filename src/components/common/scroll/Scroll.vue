@@ -43,24 +43,35 @@
       })
 
       //2.监听滚动的位置
-      this.scroll.on('scroll', (position) => {
-        // console.log(position);
-        this.$emit('scroll', position)
-      })
+      if (this.probeType === 2 || this.probeType === 3) {
+        this.scroll.on('scroll', (position) => {
+          // console.log(position);
+          this.$emit('scroll', position)
+        })
+      }
 
-      //3.监听上拉事件
-      this.scroll.on('pullingUp', () => {
-        // console.log('上拉加载更多');
-        this.$emit('pullingUp')
-      })
+      // 3.监听上拉事件(scroll滚到底部)（默认只加载一次）
+      if (this.pullUpLoad) {
+        this.scroll.on('pullingUp', () => {
+          // console.log('监听到滚动到底部');
+          this.$emit('pullingUp')
+        })
+      }
     },
     methods: {
       //ES6中可以传一个默认值 此处的time=300 当别人调用此函数但没有传time时会使用默认值
       scrollTo(x, y, time=300) {
-        this.scroll.scrollTo(x, y, time)
+        this.scroll && this.scroll.scrollTo(x, y, time)
       },
       finishPullUp() {
-        this.scroll.finishPullUp()
+        this.scroll && this.scroll.finishPullUp()
+      },
+      refresh() {
+        console.log('----------');
+        this.scroll && this.scroll.refresh()
+      },
+      getScrollY() {
+        return this.scroll ? this.scroll.y : 0
       }
     }
   }
