@@ -1,15 +1,28 @@
 <template>
   <div id="detail">
-    <detail-nav-bar class="detail-nav"></detail-nav-bar>
-    <scroll class="content" ref="scroll">
+    <detail-nav-bar class="detail-nav"
+                    @titleClick="titleClick"
+                    ref="nav"></detail-nav-bar>
+    <scroll class="content"
+            ref="scroll"
+            :probe-type="3"
+            @scroll="contentScroll">
+<!--   属性：topImage 传入值：top-image   -->
       <detail-swiper :top-images="topImages"></detail-swiper>
       <detail-base-info :goods="goods"></detail-base-info>
       <detail-shop-info :shop="shop"></detail-shop-info>
-      <detail-goods-info :detail-info="detailInfo" @imageLoad="imageLoad"></detail-goods-info>
-      <detail-param-info :param-info="paramInfo"></detail-param-info>
-      <detail-comment-info :comment-info="commentInfo"></detail-comment-info>
-      <goods-list :goods="recommends"></goods-list>
+      <detail-goods-info :detail-info="detailInfo"
+                         @imageLoad="imageLoad"></detail-goods-info>
+      <detail-param-info ref="params"
+                         :param-info="paramInfo"></detail-param-info>
+      <detail-comment-info ref="comment"
+                           :comment-info="commentInfo"></detail-comment-info>
+      <goods-list ref="recommend"
+                  :goods="recommends"></goods-list>
     </scroll>
+    <detail-bottom-bar @addToCart="addToCart"></detail-bottom-bar>
+    <back-top @click.native="backClick" v-show="isShowBackTop"></back-top>
+<!--    <toast :message="message" :show="show"></toast>-->
   </div>
 </template>
 
@@ -21,12 +34,17 @@
   import DetailGoodsInfo from "./childComps/DetailGoodsInfo";
   import DetailParamInfo from "./childComps/DetailParamInfo";
   import DetailCommentInfo from "./childComps/DetailCommentInfo";
+  import DetailBottomBar from "./childComps/DetailBottomBar";
 
   import Scroll from "components/common/scroll/Scroll";
   import GoodsList from "components/content/goods/GoodsList";
+  // import Toast from "components/common/toast/Toast";
 
   import {getDetail, Goods, Shop, GoodsParam, getRecommend} from "network/detail";
-  import {itemListenerMixin} from "common/mixin";
+  import {itemListenerMixin, backTopMixin} from "common/mixin";
+  import {debounce} from "common/utils";
+
+  import {mapActions} from 'vuex'
 
   export default {
     name: "Detail",
@@ -38,10 +56,12 @@
       DetailGoodsInfo,
       DetailParamInfo,
       DetailCommentInfo,
+      DetailBottomBar,
       Scroll,
-      GoodsList
+      GoodsList,
+      // Toast
     },
-    mixins: [itemListenerMixin],
+    mixins: [itemListenerMixin, backTopMixin],
     data() {
       return {
         iid: null,
@@ -51,7 +71,12 @@
         detailInfo: {},
         paramInfo: {},
         commentInfo: {},
-        recommends: []
+        recommends: [],
+        themeTopYs: [],
+        getThemeTopY: null,
+        currentIndex: 0,
+        // message: '',
+        // show: false
       }
     },
     created() {
@@ -82,6 +107,32 @@
         if (data.rate.cRate !== 0) {
           this.commentInfo = data.rate.list[0]
         }
+
+        //1.第一次获取，值不对
+        //值不对的原因：this.$refs.params.$el压根没有渲染
+        // this.themeTopYs = []
+        // this.themeTopYs.push(0)
+        // //$el:组件里的根组件
+        // this.themeTopYs.push(this.$refs.params.$el.offsetTop)
+        // this.themeTopYs.push(this.$refs.comment.$el.offsetTop)
+        // this.themeTopYs.push(this.$refs.recommend.$el.offsetTop)
+        //
+        // console.log(this.themeTopYs);
+
+        // this.$nextTick(() => {
+        //   //2.第二次获取：值不对
+        //   //值不对的原因：图片没有计算在内
+        //   //根据最新的数据，对应的DOM是已经加载完了，但是图片依然没有加载完（目前获取到的offsetTop不包含其中的图片）
+        //   //offsetTop值不对的时候都是因为图片的问题
+        //   this.themeTopYs = []
+        //   this.themeTopYs.push(0)
+        //   //$el:组件里的根组件
+        //   this.themeTopYs.push(this.$refs.params.$el.offsetTop)
+        //   this.themeTopYs.push(this.$refs.comment.$el.offsetTop)
+        //   this.themeTopYs.push(this.$refs.recommend.$el.offsetTop)
+        //
+        //   console.log(this.themeTopYs);
+        // })
       })
 
       //3.请求推荐数据
@@ -89,6 +140,19 @@
         console.log(res);
         this.recommends = res.data.list
       })
+
+      //4.给getThemeTopY赋值(对给this.themeTopYs赋值进行防抖)
+      this.getThemeTopY = debounce(() => {
+        this.themeTopYs = []
+        this.themeTopYs.push(0)
+        //$el:组件里的根组件
+        this.themeTopYs.push(this.$refs.params.$el.offsetTop)
+        this.themeTopYs.push(this.$refs.comment.$el.offsetTop)
+        this.themeTopYs.push(this.$refs.recommend.$el.offsetTop)
+        this.themeTopYs.push(Number.MAX_VALUE)
+
+        console.log(this.themeTopYs);
+      }, 100)
     },
     mounted() {
     },
@@ -96,9 +160,80 @@
       this.$bus.$off('itemImageLoad', this.itemImgListener)
     },
     methods: {
+      ...mapActions(['addCart']),
       imageLoad() {
         // console.log('++++++++');
-        this.refresh()
+        this.newRefresh()
+        this.getThemeTopY()
+      },
+      titleClick(index) {
+        // console.log(index);
+        this.$refs.scroll.scrollTo(0, -this.themeTopYs[index], 300)
+      },
+      contentScroll(position) {
+        // console.log(position);
+        //1.获取y值
+        const positionY = -position.y
+
+        //2.positionY和主题中的值进行对比
+        let length = this.themeTopYs.length
+        //length - 1：为了方便比较加了个最大值，所以遍历的时候可以不遍历最后一个
+        for (let i = 0; i < length - 1; i ++) {
+          // if (positionY > this.themeTopYs[i] && positionY < this.themeTopYs[i + 1]) {
+          // }
+          if (
+            // this.currentIndex !== i && (
+            // (i < length - 1 && positionY >= this.themeTopYs[i] && positionY < this.themeTopYs[i + 1]) ||
+            // (i === length - 1 && positionY >= this.themeTopYs[i]))
+
+            this.currentIndex !== i &&
+            (positionY >= this.themeTopYs[i] && positionY < this.themeTopYs[i + 1])
+          ) {
+            this.currentIndex = i
+            // console.log(this.currentIndex);
+            this.$refs.nav.currentIndex = this.currentIndex
+          }
+        }
+
+        //3.是否显示回到顶部
+        this.listenShowBackTop(position)
+      },
+      addToCart() {
+        // console.log('----------');
+        //1.获取购物车需要展示的信息
+        const product = {}
+        product.image = this.topImages[0]
+        product.title = this.goods.title
+        product.desc = this.goods.desc
+        product.price = this.goods.realPrice
+        product.iid = this.iid
+
+        //2.将商品添加到购物车
+
+        // this.$store.cartList.push(product)
+
+        //调用mutations中的方法用commit
+        // this.$store.commit('addCart', product)
+
+        this.addCart(product).then(res => {
+          // this.show = true
+          // this.message = res
+          //
+          // setTimeout(() => {
+          //   this.show = false
+          //   this.message = ''
+          // }, 1500)
+          // // console.log(res);
+
+          // this.$toast.show(res, 2000)
+          this.$toast.show(res)
+          // this.$toast.show()
+        })
+
+        // //调用actions中的方法用dispatch
+        // this.$store.dispatch('addCart', product).then(res => {
+        //   console.log(res);
+        // })
       }
     }
   }
@@ -113,7 +248,7 @@
   }
 
   .content {
-    height: calc(100% - 44px);
+    height: calc(100% - 44px - 49px);
   }
 
   .detail-nav {

@@ -5,7 +5,8 @@ export function debounce(func, delay) {
     if (timer) clearTimeout(timer)
     //setTimeout函数里的操作会加到事件循环的尾部执行，就算不加延时也会在平行的操作完成后再执行
     timer = setTimeout(() => {
-      func.apply(this, args)
+      // func.apply(this, args)
+      func(...args)
     }, delay)
   }
 }
